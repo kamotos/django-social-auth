@@ -31,6 +31,13 @@ class TwitterBackend(OAuthBackend):
     """Twitter OAuth authentication backend"""
     name = 'twitter'
     EXTRA_DATA = [('id', 'id')]
+    #fields names in the API
+    RESPONSE_FIELDS = {
+        'bio': "description",
+        'web': "url",
+        'image': "profile_image_url",
+
+        }
 
     def get_user_details(self, response):
         """Return user details from Twitter account"""

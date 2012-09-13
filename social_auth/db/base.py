@@ -35,7 +35,11 @@ class UserSocialAuthMixin(object):
         If provider returns a timestamp instead of session seconds to live, the
         timedelta is inferred from current time (using UTC timezone). None is
         returned if there's no value stored or it's invalid.
+
+        Socialiq hack : Actually always returns None since we need it only for
+                        Facebook at the moment.
         """
+        return None
         name = setting('SOCIAL_AUTH_EXPIRATION', 'expires')
         if self.extra_data and name in self.extra_data:
             try:
@@ -91,8 +95,13 @@ class UserSocialAuthMixin(object):
     def get_social_auth(cls, provider, uid):
         if not isinstance(uid, basestring):
             uid = str(uid)
+
+        q_kwargs = {
+            "{0}_id".format(provider): uid
+        }
+
         try:
-            return cls.objects.get(provider=provider, uid=uid)
+            return cls.objects.get(**q_kwargs)
         except cls.DoesNotExist:
             return None
 
@@ -104,7 +113,12 @@ class UserSocialAuthMixin(object):
     def create_social_auth(cls, user, uid, provider):
         if not isinstance(uid, basestring):
             uid = str(uid)
-        return cls.objects.create(user=user, uid=uid, provider=provider)
+        provider_id_column = "{0}_id".format(provider)
+        social_user = cls.objects.get(user=user)
+        setattr(social_user, provider_id_column, uid)
+        social_user.save()
+        return social_user
+        #return cls.objects.create(user=user, **q_kwargs)
 
     @classmethod
     def store_association(cls, server_url, association):

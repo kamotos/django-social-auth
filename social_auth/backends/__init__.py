@@ -20,6 +20,7 @@ from oauth2 import Consumer as OAuthConsumer, Token, Request as OAuthRequest
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.backends import ModelBackend
+from django.db.models import Q
 from django.utils import simplejson
 from django.utils.importlib import import_module
 
@@ -76,6 +77,15 @@ PIPELINE = setting('SOCIAL_AUTH_PIPELINE', (
                 'social_auth.backends.pipeline.social.load_extra_data',
                 'social_auth.backends.pipeline.user.update_user_details',
            ))
+
+class EmailUsernameBackend(ModelBackend):
+    def authenticate(self, username=None, password=None):
+        try:
+            user = UserSocialAuth.objects.get(Q(user__username=username) | Q(user__email=username)).user
+            if user.check_password(password):
+                return user
+        except UserSocialAuth.DoesNotExist:
+            return None
 
 
 class SocialAuthBackend(ModelBackend):

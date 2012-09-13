@@ -1,10 +1,19 @@
+from datetime import datetime
 from uuid import uuid4
+import urllib
 
+from annoying.decorators import render_to
+
+from django.core.files import File
+from django.shortcuts import redirect
+
+from social_auth.forms import UserForm
 from social_auth.utils import setting
 from social_auth.models import UserSocialAuth
 from social_auth.backends import USERNAME
 from social_auth.signals import socialauth_registered, \
                                 pre_update
+
 
 
 def get_username(details, user=None,
@@ -39,14 +48,20 @@ def get_username(details, user=None,
 def create_user(backend, details, response, uid, username, user=None, *args,
                 **kwargs):
     """Create user. Depends on get_username pipeline."""
-    if user:
+    if user or backend.name not in ('facebook', 'twitter'):
         return {'user': user}
     if not username:
         return None
     # NOTE: not return None because Django raises exception of strip email
-    email = details.get('email') or ''
+    email = kwargs.get('email') or ''
+    password = kwargs.get('password')
+
+    user = UserSocialAuth.create_user(username=username, email=email,
+                                      password=password)
+    user.set_password(password)
+    user.save()
     return {
-        'user': UserSocialAuth.create_user(username=username, email=email),
+        'user': user,
         'is_new': True
     }
 
@@ -54,8 +69,41 @@ def create_user(backend, details, response, uid, username, user=None, *args,
 def update_user_details(backend, details, response, user, is_new=False, *args,
                         **kwargs):
     """Update user details using data from provider."""
-    changed = False  # flag to track changes
+    if backend.name not in ('twitter', 'facebook'):
+        return
 
+    fields_name = backend.RESPONSE_FIELDS
+    profile = user.get_profile()
+
+    if not profile.bio and response.get(fields_name['bio'], None):
+        profile.bio = response[fields_name['bio']]
+    if not profile.user.first_name and response.get('first_name', None):
+        user.first_name = response['first_name']
+    if not profile.user.last_name and response.get('last_name', None):
+        user.last_name = response['last_name']
+    if not profile.web and response.get(fields_name['web'], None):
+        profile.web = response[fields_name['web']]
+    if not profile.image and response.get(fields_name['image'], None):
+        content = urllib.urlretrieve(response[fields_name['image']].encode('utf-8'
+                                     ).replace("_normal", ""))
+        profile.image.save("%s.jpg" % user.id, File(open(content[0])), save=True)
+    if not profile.gender and response.get('gender', None):
+        profile.gender = response['gender']
+    if not profile.birthdate and response.get('birthday', None):
+        profile.birthdate = datetime.strptime(response['birthday'],
+                                              "%m/%d/%Y").date()
+    if not profile.city and response.get('location', None):
+        try:
+            profile.city = response['location'].get('name', None)
+        except AttributeError:
+            profile.city = response['location']
+        profile.geocode_location()
+    profile.save()
+    if not is_new:
+        return
+    return
+
+    changed = False  # flag to track changes
     for name, value in details.iteritems():
         # do not update username, it was already generated
         # do not update configured fields if user already existed
@@ -66,9 +114,10 @@ def update_user_details(backend, details, response, user, is_new=False, *args,
             setattr(user, name, value)
             changed = True
 
-    # Fire a pre-update signal sending current backend instance,
+
     # user instance (created or retrieved from database), service
     # response and processed details.
+    # Fire a pre-update signal sending current backend instance,
     #
     # Also fire socialauth_registered signal for newly registered
     # users.
@@ -86,6 +135,32 @@ def update_user_details(backend, details, response, user, is_new=False, *args,
     if is_new:
         changed |= any(filter(signal_response,
                               socialauth_registered.send(**signal_kwargs)))
-
     if changed:
         user.save()
+    profile.save()
+
+
+def setup(backend, *args, **kwargs):
+    user = kwargs.get('user', None)
+    setup_session = kwargs['request'].session.pop('socialauth_setup', {})
+
+    if setup_session:
+        #If first signing in
+        username = setup_session.get('username')
+        # NOTE: not return None because Django raises exception of strip email
+        email = setup_session.get('email') or ''
+        password = setup_session.get('password')
+
+        user = UserSocialAuth.create_user(username=username, email=email,
+                                          password=password)
+        user.save()
+        return {
+            'user': user,
+            'is_new': True
+        }
+
+    if backend.name in ('twitter', 'facebook') and not user:
+        return redirect('socialauth_setup')
+    else:
+        return {'user': user}
+#    if user or backend.name not in ('facebook', 'twitter'):

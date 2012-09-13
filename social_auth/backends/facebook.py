@@ -43,6 +43,13 @@ class FacebookBackend(OAuthBackend):
         ('id', 'id'),
         ('expires', setting('SOCIAL_AUTH_EXPIRATION', 'expires'))
     ]
+    #fields names in the API
+    RESPONSE_FIELDS = {
+        'bio': "bio",
+        'web': "website",
+        'image': "picture",
+
+    }
 
     def get_user_details(self, response):
         """Return user details from Facebook account"""

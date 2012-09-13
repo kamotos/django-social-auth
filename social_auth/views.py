@@ -5,15 +5,24 @@ Notes:
       on third party providers that (if using POST) won't be sending csrf
       token back.
 """
+
+import json
+
+from annoying.decorators import render_to
+
+
 from django.http import HttpResponseRedirect, HttpResponse
 from django.contrib.auth import login, REDIRECT_FIELD_NAME
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from django.shortcuts import redirect
 
 from social_auth.utils import sanitize_redirect, setting, \
                               backend_setting, clean_partial_pipeline
 from social_auth.decorators import dsa_view
+from forms import UserForm
 
 
 DEFAULT_REDIRECT = setting('SOCIAL_AUTH_LOGIN_REDIRECT_URL') or \
@@ -168,3 +177,28 @@ def auth_complete(request, backend, user=None, *args, **kwargs):
             return backend.continue_pipeline(pipeline_index=idx,
                                              *xargs, **xkwargs)
     return backend.auth_complete(user=user, request=request, *args, **kwargs)
+
+@require_POST
+@csrf_exempt
+def foursquare_push_notification(request):
+    checkin = json.loads(request.POST['checkin'])
+    return
+
+
+@render_to('socialregistration/setup.html')
+def setup(request, *args, **kwargs):
+    name = setting('SOCIAL_AUTH_PARTIAL_PIPELINE_KEY', 'partial_pipeline')
+    session = request.session[name]
+
+    details = session['kwargs'].get('details', {})
+    initial = dict(
+        username = details.get('username', ''),
+        email = details.get('email', '')
+    )
+
+    form = UserForm(request.POST or None, initial=initial)
+    if request.method == 'POST' and form.is_valid():
+        request.session['socialauth_setup'] = form.cleaned_data
+        backend = session['backend']
+        return redirect('socialauth_complete', backend)
+    return locals()

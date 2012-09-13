@@ -1,4 +1,5 @@
 """Django ORM models for Social Auth"""
+from django.contrib.auth.models import User
 from django.db import models
 from django.db.utils import IntegrityError
 
@@ -21,19 +22,32 @@ if setting('SOCIAL_AUTH_USER_MODEL'):
                                     .rsplit('.', 1))
 else:
     from django.contrib.auth.models import User as UserModel
+from profile.models import Profile
 
-
-class UserSocialAuth(models.Model, UserSocialAuthMixin):
+class UserSocialAuth(Profile, UserSocialAuthMixin):
     """Social Auth association model"""
     User = UserModel
-    user = models.ForeignKey(UserModel, related_name='social_auth')
-    provider = models.CharField(max_length=32)
-    uid = models.CharField(max_length=255)
-    extra_data = JSONField(default='{}')
+    user = models.OneToOneField(UserModel, related_name='social_auth')
+    #provider = models.CharField(max_length=32)
+    #uid = models.CharField(max_length=255)
+    #extra_data = JSON
+    #
+    #
+    # Field(default='{}')
+    twitter_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    twitter_extra_data = JSONField(default='{}', null=True, blank=True)
+    twitter_access_token = models.CharField(max_length=255, null=True, blank=True)
+
+    foursquare_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    foursquare_extra_data = JSONField(default='{}', null=True, blank=True)
+    foursquare_access_token = models.CharField(max_length=255, null=True, blank=True)
+
+    facebook_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    facebook_extra_data = JSONField(default='{}', null=True, blank=True)
+    facebook_access_token = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         """Meta data"""
-        unique_together = ('provider', 'uid')
         app_label = 'social_auth'
 
     @classmethod
@@ -42,9 +56,9 @@ class UserSocialAuth(models.Model, UserSocialAuthMixin):
 
     @classmethod
     def get_social_auth(cls, provider, uid):
+        q_kwargs = {"{0}_id".format(provider): uid}
         try:
-            return cls.objects.select_related('user').get(provider=provider,
-                                                          uid=uid)
+            return cls.objects.get(**q_kwargs)
         except UserSocialAuth.DoesNotExist:
             return None
 
@@ -78,3 +92,5 @@ class Association(models.Model, AssociationMixin):
 
 def is_integrity_error(exc):
     return exc.__class__ is IntegrityError
+
+Profile = UserSocialAuth

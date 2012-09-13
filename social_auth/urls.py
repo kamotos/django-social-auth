@@ -1,7 +1,7 @@
 """URLs module"""
 from django.conf.urls.defaults import patterns, url
 
-from social_auth.views import auth, complete, disconnect
+from social_auth.views import auth, complete, disconnect, foursquare_push_notification, setup
 
 
 urlpatterns = patterns('',
@@ -24,4 +24,7 @@ urlpatterns = patterns('',
         name='socialauth_disconnect'),
     url(r'^disconnect/(?P<backend>[^/]+)/(?P<association_id>[^/]+)/$',
         disconnect, name='socialauth_disconnect_individual'),
+    url(r'^foursquare/push', foursquare_push_notification,
+        name='socialauth_foursquare_push_notification'),
+    url(r'^setup/', setup, name="socialauth_setup")
 )

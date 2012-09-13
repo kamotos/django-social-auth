@@ -1,6 +1,7 @@
-from social_auth.models import UserSocialAuth, SOCIAL_AUTH_MODELS_MODULE
-from social_auth.backends.exceptions import AuthAlreadyAssociated
 from django.utils.translation import ugettext
+
+from social_auth.models import UserSocialAuth, SOCIAL_AUTH_MODELS_MODULE
+from social_auth.backends.exceptions import AuthAlreadyAssociated, StopPipeline
 
 
 def social_auth_user(backend, uid, user=None, *args, **kwargs):
@@ -10,6 +11,8 @@ def social_auth_user(backend, uid, user=None, *args, **kwargs):
     Raise AuthAlreadyAssociated if UserSocialAuth entry belongs to another
     user.
     """
+    if not user and backend.name not in ('twitter', 'facebook'):
+        raise StopPipeline()
     social_user = UserSocialAuth.get_social_auth(backend.name, uid)
     if social_user:
         if user and social_user.user != user:
@@ -50,10 +53,22 @@ def load_extra_data(backend, details, response, uid, user, social_user=None,
                   UserSocialAuth.get_social_auth(backend.name, uid)
     if social_user:
         extra_data = backend.extra_data(user, uid, response, details)
-        if extra_data and social_user.extra_data != extra_data:
-            if social_user.extra_data:
-                social_user.extra_data.update(extra_data)
+        extra_data_field_name = "{0}_extra_data".format(backend.name)
+        social_user_extra_data = getattr(social_user, extra_data_field_name)
+        if extra_data and social_user_extra_data != extra_data:
+            if social_user_extra_data:
+                social_user_extra_data.update(extra_data)
             else:
-                social_user.extra_data = extra_data
+                social_user_extra_data = extra_data
+
+            #Getting the access token
+            access_token_field_name = "{0}_access_token".format(backend.name)
+            setattr(social_user, access_token_field_name, extra_data['access_token'])
+
+            #Storing extra data
+            social_user_extra_data.pop('access_token', None)
+            social_user_extra_data.pop('id', None)
+            setattr(social_user, extra_data_field_name, social_user_extra_data)
+
             social_user.save()
         return {'social_user': social_user}
